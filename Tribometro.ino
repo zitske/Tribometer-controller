@@ -1,12 +1,27 @@
-#define dirPin 51
-#define stepPin 47
+#define dirPinX 51
+#define stepPinX 47
+#define dirPinY 0
+#define stepPinY 1
+#define dirPinZ 2
+#define stepPinZ 3
 #define stepsPerRevolution 2000
+int xPosition = 0;
+int yPosition = 0;
+int zPosition = 0;
+
+int btX = 0;
+int btY = 0;
+int btZ = 0;
 
 void setup() {
   // Declare pins as output:
   Serial.begin(115200);
-  pinMode(stepPin, OUTPUT);
-  pinMode(dirPin, OUTPUT);
+  pinMode(stepPinX, OUTPUT);
+  pinMode(stepPinY, OUTPUT);
+  pinMode(stepPinZ, OUTPUT);
+  pinMode(dirPinX, OUTPUT);
+  pinMode(dirPinY, OUTPUT);
+  pinMode(dirPinZ, OUTPUT);
   linear(100,10,100);
 }
 
@@ -16,26 +31,51 @@ void loop() {
   
   
 }
-
-
-
-void directionX(int dir){
+/*
+axis:
+0 = X
+1 = Y
+2 = Z 
+*/
+void mDirection(int dir,int axis){
   switch (dir){
     case 0:
-    digitalWrite(dirPin, HIGH);
+    if(axis == 0){
+      digitalWrite(dirPinX, HIGH);
+      }else if(axis == 1){
+        digitalWrite(dirPinY, HIGH);
+        }else if(axis == 2){
+          digitalWrite(dirPinZ, HIGH);
+          }
+    
     break;
     case 1:
-    digitalWrite(dirPin, LOW);
+    
+    if(axis == 0){
+      digitalWrite(dirPinX, LOW);
+      }else if(axis == 1){
+        digitalWrite(dirPinY, LOW);
+        }else if(axis == 2){
+          digitalWrite(dirPinZ, LOW);
+          }
     break;
     default:
-    digitalWrite(dirPin, HIGH);
+    if(axis == 0){
+      digitalWrite(dirPinX, HIGH);
+      }else if(axis == 1){
+        digitalWrite(dirPinY, HIGH);
+        }else if(axis == 2){
+          digitalWrite(dirPinZ, HIGH);
+          }
     break;
 }
 }
 
 
-void moveX(int mm,int dir,int vel){
-     directionX(dir);
+
+
+void moveAxis(int mm,int dir,int vel,int axis){
+     mDirection(dir,axis);
      int passos =  mm*(stepsPerRevolution/5);
      //int velo = 6000000 / (vel*stepsPerRevolution);
      //Serial.println(velo);
@@ -43,9 +83,21 @@ void moveX(int mm,int dir,int vel){
      Serial.println(velo);
      for (int i = 0; i < passos; i++) {
       // These four lines result in 1 step:
-      digitalWrite(stepPin, HIGH);
+      if(axis == 0){
+      digitalWrite(stepPinX, HIGH);
+      }else if(axis == 1){
+        digitalWrite(stepPinY, HIGH);
+        }else if(axis == 2){
+          digitalWrite(stepPinZ, HIGH);
+          }
       delayMicroseconds(velo);
-      digitalWrite(stepPin, LOW);
+      if(axis == 0){
+      digitalWrite(stepPinX, LOW);
+      }else if(axis == 1){
+        digitalWrite(stepPinY, LOW);
+        }else if(axis == 2){
+          digitalWrite(stepPinZ, LOW);
+          }
       delayMicroseconds(velo);
     
      /*
@@ -66,12 +118,43 @@ void moveX(int mm,int dir,int vel){
 void linear(int distancia, int curso,int velocidade){
   int times = distancia/curso;
   for(int i = 0;i<times/2;i++){
-    moveX(curso,1,velocidade);
+    moveAxis(curso,1,velocidade,0);
     //delay(1000);
-    moveX(curso,0,velocidade);
+    moveAxis(curso,0,velocidade,0);
   }
-  
 }
+
+void circular(int distancia,int diametro,int velocidade){
+  int times = distancia/diametro;
+  for(int i = 0;i<times/2;i++){
+    moveAxis(diametro,1,velocidade,0);
+    moveAxis(diametro,1,velocidade,2);
+    //delay(1000);
+    moveAxis(diametro,0,velocidade,0);
+    moveAxis(diametro,0,velocidade,2);
+  }
+}
+
+void alignAxis(int axis){
+  int velocidade = 100;
+  if(axis == 0){
+      while(btX == 0){
+        moveAxis(2000000,1,velocidade,0);
+      }
+      xPosition = 0;
+  }else if(axis == 1){
+      while(btY == 0){
+        moveAxis(2000000,1,velocidade,1);
+      }
+      yPosition = 0;
+  }else if(axis == 2){
+      while(btZ == 0){
+        moveAxis(2000000,1,velocidade,2);
+      }
+      zPosition = 0;
+  }
+}
+
 
 //360 = 200p =5mm
 //360 -> 5mm
