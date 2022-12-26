@@ -9,33 +9,33 @@ string goHome(){
 
 void linear(int lenght,double middle,int times){
     bool side = true;
-    cout<<goHome();
-    cout<<"G00 X"<<middle+lenght/2<<"Y"<<middle;
+    Serial.println(goHome());
+    Serial.println("G00 X"+middle+lenght/2+"Y"+middle);
     
     for(int i=0;i<times;i++){
         if(side){
-            cout<<"G1"<<lenght*(-1);
+            Serial.println("G1"+lenght*(-1));
             side = false;
         }else{
-            cout<<"G1"<<lenght;
+            Serial.println("G1"+lenght);
             side = true;
         }
     }
-    cout<<goHome();
+    Serial.println(goHome());
 }
 
 void circular(int radius,double middle,int times,bool cc){
-    cout<<goHome();
-    cout<<"G00 X"<<middle+radius<<"Y"<<middle;
+    Serial.println(goHome());
+    Serial.println("G00 X"+middle+radius+"Y"+middle);
     
     for(int i=0;i<times;i++){
         if(cc){
-            cout<<"G2 X"<<radius<<"I"<<radius<<"J0";
+            Serial.println("G2 X"+radius+"I"+radius+"J0");
         }else{
-            cout<<"G3 X"<<radius<<"I"<<radius*(-1)<<"J0";
+            Serial.println("G3 X"+radius+"I"+radius*(-1)+"J0");
         }
     }
-    cout<<goHome();
+    Serial.println(goHome());
     
 }
 
@@ -50,4 +50,3 @@ int main()
     circular(lenght,middle,tm,cc);
     return 0;
 }
-
