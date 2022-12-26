@@ -1,3 +1,4 @@
+#include <Nextion.h>
 
 
 void setup(){
@@ -11,7 +12,7 @@ void loop()
     int tm=5;
     bool cc = false;
     
-    linear(lenght,middle,tm);
+    linear(lenght,middle,tm,1000);
     circular(lenght,middle,tm,cc);
 
 }
@@ -19,11 +20,10 @@ void loop()
 String goHome(){
     return "G00 X0.0000 Y0.0000";
 }
-void linear(int lenght,double middle,int times){
+void linear(int lenght,double middle,int times,int speed){
     bool side = true;
     Serial.println(goHome());
     Serial.println("G00 X"+String(middle+lenght/2)+"Y"+String(middle));
-    
     for(int i=0;i<times;i++){
         if(side){
             Serial.println("G1"+lenght*(-1));
