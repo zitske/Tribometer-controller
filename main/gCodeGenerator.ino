@@ -1,8 +1,54 @@
 #include <Nextion.h>
 
+// Declare your Nextion objects - Example (page id = 0, component id = 1, component name = "b0") 
+//Linear
+NexText LinearForcaNormal = NexText(1, 6, "n0");
+NexText LinearCurso = NexText(1, 10, "n1"); 
+NexText LinearCurso = NexText(1, 11, "n2"); 
+NexButton LinearStart = NexButton(1, 1, "b0"); 
+//Ratativo
+NexText RatativoForcaNormal = NexText(7, 6, "n0");
+NexText RatativoDiametro = NexText(7, 10, "n1"); 
+NexText RatativoDistanciaTotal = NexText(7, 11, "n2"); 
+NexButton RatativoStart = NexButton(7, 1, "b0"); 
+//Manual
+NexButton ManualHome = NexButton(6, 8, "b7"); 
+NexButton ManualX = NexButton(6, 3, "b5");
+NexButton ManualY = NexButton(6, 4, "b0");
+NexButton ManualY_ = NexButton(6, 5, "b3");
+NexButton ManualX_ = NexButton(6, 2, "b2");
+NexButton ManualZ = NexButton(6, 6, "b4");
+NexButton ManualZ_ = NexButton(6, 7, "b6");      
+//Loading
+NexProgressBar LoadingProgress = NexProgressBar(8, 1, "j0");
+NexButton LoadingCancel = NexButton(8, 2, "b0");
+//Home
+NexButton Home = NexButton(0, 4, "b3");
+
+//Stopped Here
+// Register a button object to the touch event list.  
+NexTouch *nex_listen_list[] = {
+  &b0,
+  &b0,
+  &b0,
+  &bUpdate,
+  NULL
+};
+
+void bOnPopCallback(void *ptr) {
+  tState.setText("State: on");
+  
+}
 
 void setup(){
     Serial.begin(115200);
+    nexInit();
+
+     // Register the pop event callback function of the components
+    bOn.attachPop(bOnPopCallback, &bOn);
+    bOff.attachPop(bOffPopCallback, &bOff);
+    h0.attachPop(h0PopCallback);
+    bUpdate.attachPop(bUpdatePopCallback, &bUpdate);
 }
 
 void loop()
@@ -11,7 +57,7 @@ void loop()
     double middle=111.0;
     int tm=5;
     bool cc = false;
-    
+    nexLoop(nex_listen_list);
     linear(lenght,middle,tm,1000);
     circular(lenght,middle,tm,cc);
 
