@@ -1,10 +1,11 @@
 #include <Nextion.h>
 
+double middle=111.0;
 // Declare your Nextion objects - Example (page id = 0, component id = 1, component name = "b0") 
 //Linear
 NexText LinearForcaNormal = NexText(1, 6, "n0");
 NexText LinearCurso = NexText(1, 10, "n1"); 
-NexText LinearCurso = NexText(1, 11, "n2"); 
+NexText LinearDistTotal = NexText(1, 11, "n2"); 
 NexButton LinearStart = NexButton(1, 1, "b0"); 
 //Ratativo
 NexText RatativoForcaNormal = NexText(7, 6, "n0");
@@ -25,7 +26,7 @@ NexButton LoadingCancel = NexButton(8, 2, "b0");
 //Home
 NexButton Home = NexButton(0, 4, "b3");
 
-//Stopped Here
+//Change names to edit this
 // Register a button object to the touch event list.  
 NexTouch *nex_listen_list[] = {
   &b0,
@@ -35,9 +36,9 @@ NexTouch *nex_listen_list[] = {
   NULL
 };
 
+//LinearStart Click
 void bOnPopCallback(void *ptr) {
-  tState.setText("State: on");
-  
+    linear((LinearCurso.getText()).toInt(),middle,toTimes((LinearCurso.getText()).toInt(),(LinearDistTotal.getTExt()).toInt()),100);
 }
 
 void setup(){
@@ -54,7 +55,6 @@ void setup(){
 void loop()
 {
     int lenght=50;
-    double middle=111.0;
     int tm=5;
     bool cc = false;
     nexLoop(nex_listen_list);
@@ -94,4 +94,8 @@ void circular(int radius,double middle,int times,bool cc){
     }
     Serial.println(goHome());
     
+}
+
+int toTimes(int curso,int totalDist){
+    return (totalDist/curso);
 }
