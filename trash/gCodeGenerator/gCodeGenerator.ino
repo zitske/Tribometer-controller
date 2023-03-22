@@ -1,4 +1,5 @@
 #include <Nextion.h>
+#include <SoftwareSerial.h>
 
 double middle=111.0;
 // Declare your Nextion objects - Example (page id = 0, component id = 1, component name = "b0") 
@@ -29,27 +30,37 @@ NexButton Home = NexButton(0, 4, "b3");
 //Change names to edit this
 // Register a button object to the touch event list.  
 NexTouch *nex_listen_list[] = {
-  &b0,
-  &b0,
-  &b0,
-  &bUpdate,
+  &LinearStart,
+  &RatativoStart,
+  &ManualHome,
+  &LoadingCancel,
   NULL
 };
 
 //LinearStart Click
-void bOnPopCallback(void *ptr) {
-    linear((LinearCurso.getText()).toInt(),middle,toTimes((LinearCurso.getText()).toInt(),(LinearDistTotal.getTExt()).toInt()),100);
+void LinearStartPopCallback(void *ptr) {
+    Serial.println("oi1");
+    //linear((LinearCurso.getText()).toInt(),middle,toTimes((LinearCurso.getText()).toInt(),(LinearDistTotal.getTExt()).toInt()),100);
+    linear(100,middle,10,1000);
 }
-
+void RatativoStartPopCallback(void *ptr) {
+    //linear((LinearCurso.getText()).toInt(),middle,toTimes((LinearCurso.getText()).toInt(),(LinearDistTotal.getTExt()).toInt()),100);
+    Serial.println("oi2");
+    circular(100,middle,10,true);
+}
+//SoftwareSerial SoftSerial(0, 1);
 void setup(){
-    Serial.begin(115200);
+    Serial.begin(9600);
+    //SoftSerial.begin(115200);
+    //Serial.println("Serial: OK!");
+    //SoftSerial.println("SoftSerial: OK!");
     nexInit();
 
      // Register the pop event callback function of the components
-    bOn.attachPop(bOnPopCallback, &bOn);
-    bOff.attachPop(bOffPopCallback, &bOff);
-    h0.attachPop(h0PopCallback);
-    bUpdate.attachPop(bUpdatePopCallback, &bUpdate);
+    LinearStart.attachPop(LinearStartPopCallback, &LinearStart);
+    RatativoStart.attachPop(RatativoStartPopCallback, &RatativoStart);
+    //h0.attachPop(h0PopCallback);
+    //bUpdate.attachPop(bUpdatePopCallback, &bUpdate);
 }
 
 void loop()
@@ -58,8 +69,8 @@ void loop()
     int tm=5;
     bool cc = false;
     nexLoop(nex_listen_list);
-    linear(lenght,middle,tm,1000);
-    circular(lenght,middle,tm,cc);
+    //linear(lenght,middle,tm,1000);
+    //circular(lenght,middle,tm,cc);
 
 }
 
