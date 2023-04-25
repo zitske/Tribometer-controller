@@ -1,9 +1,15 @@
 /*
-* modo manual funciona
+*serial comunica mas nao executa
  */
+#include "HX711.h"
 
 #define HMI_RX 2
 #define HMI_TX 3
+
+#define LCELL_Y_DT 23
+#define LCELL_Y_CK 25
+#define LCELL_Z_DT 27
+#define LCELL_Z_CK 29
 
 extern const int PULSE_X;
 extern const int PULSE_Y;
@@ -74,6 +80,10 @@ evento_t riscamento_f();
 evento_t fadiga_f();
 evento_t zerar_f();
 
+float erro_integral = 0, erro_anterior = 0, forca_z = 0, referencia_forca_z = 0, prd_controle = 100e-6, kp = 0.1, ki = 1;
+void reiniciar_controle();
+void lei_de_controle();
+
 estado_t estado_anterior = standby, estado_atual = standby, proximo_estado;
 dados_fadiga_t dados_fadiga;
 dados_linear_t dados_linear;
@@ -82,37 +92,90 @@ dados_rotativo_t dados_rotativo;
 
 long last_maquina_de_estados = 0;
 long last_cnc = 0;
+extern const int passos_por_mm;
 
 long tempo_cnc = 100; // Tempo de atualização do cnc em microssegundos, a alteração deste valor afeta a velocidade.
 
 char cmd_buffer[10];
 
+void init_timer3(uint16_t periodo_us){
+    // Modo Fast PWM (overflow quando o contador exige OCR3A -> controlar o periodo)
+    TCCR3A = (1 << WGM31) | (1 << WGM30);
+    TCCR3B = (1 << WGM33) | (1 << WGM32);
+    
+    TCCR3B |= (1 << CS31); // Prescaler para clkio/64, resolução de 4 microssegundos
+
+    OCR3A = (uint16_t)(periodo_us/4); // Configura o periodo do timer
+
+    TIMSK3 = (1 << TOIE3); // habilita a interrupção de overflow
+}
+
+void init_timer4(uint16_t periodo_us){
+    // Modo Fast PWM (overflow quando o contador exige OCR4A -> controlar o periodo)
+    TCCR4A = (1 << WGM41) | (1 << WGM40);
+    TCCR4B = (1 << WGM43) | (1 << WGM42);
+
+    TCCR4B |= (1 << CS42); // Prescaler para clkio/64, resolução de 4 microssegundos
+
+    OCR4A = (uint16_t)(periodo_us/4); // Configura o periodo do timer
+
+    TIMSK4 = (1 << TOIE4); // habilita a interrupção de overflow
+}
+
+void habilitar_timer3_ovf(){
+    TIMSK3 = (1 << TOIE3); // habilita a interrupção de overflow
+}
+
+void habilitar_timer4_ovf(){
+    TIMSK4 = (1 << TOIE4); // habilita a interrupção de overflow
+}
+
+void desabilitar_timer3_ovf(){
+    TIMSK3 = 0;
+}
+
+void desabilitar_timer4_ovf(){
+    TIMSK4 = 0;
+}
+
+HX711 loadcell_y, loadcell_z;
+
 void setup() {
-  // Inicialização das portas seriais
-  pinMode(PULSE_X, OUTPUT);
-  pinMode(PULSE_Y, OUTPUT);
-  pinMode(PULSE_Z, OUTPUT);
-  pinMode(DIR_X, OUTPUT);
-  pinMode(DIR_Y, OUTPUT);
-  pinMode(DIR_Z, OUTPUT);
-  Serial.begin(9600);
-  Serial1.begin(9600);
-  tempo_cnc = periodo_atualizacao_cnc(50); // velocidade inicial de 100 mm/s
+    // Inicialização das portas seriais
+    pinMode(PULSE_X, OUTPUT);
+    pinMode(PULSE_Y, OUTPUT);
+    pinMode(PULSE_Z, OUTPUT);
+    pinMode(DIR_X, OUTPUT);
+    pinMode(DIR_Y, OUTPUT);
+    pinMode(DIR_Z, OUTPUT);
+    Serial.begin(9600);
+    Serial1.begin(9600);
+
+    init_timer3(periodo_atualizacao_cnc(50)); // velocidade inicial de 50 mm/s
+    init_timer4(1e6*prd_controle);
+
+    desabilitar_timer4_ovf();
+
+    loadcell_y.begin(LCELL_Y_DT, LCELL_Y_CK);
+    loadcell_z.begin(LCELL_Z_DT, LCELL_Z_CK);
+
+    sei();
 }
 
 void loop() {
-    if(millis() - last_maquina_de_estados > 100){
-        maquina_de_estados();
-        last_maquina_de_estados = millis();
-    }
+    maquina_de_estados();
+}
 
-    if(micros() - last_cnc >= 100){
-        atualizar_cnc();
-        last_cnc = micros();
-    }
+ISR(TIMER3_OVF_vect){
+    atualizar_cnc();
+}
+
+ISR(TIMER4_OVF_vect){
+    lei_de_controle();
 }
 
 extern int x_atual, y_atual, z_atual; // Posição em x, y e z em pulsos
+extern int x_real, y_real, z_real; // Posição em x, y e z em pulsos
 
 void maquina_de_estados() {
     evento_t evento = no_event;
@@ -284,6 +347,14 @@ evento_t standby_f(){
             }else if(strcmp(cmd_buffer, "man") == 0){ // Comando para iniciar o modo manual
                 return iniciar_manual;
             }else if(strcmp(cmd_buffer, "zro") == 0){ // Comando zerar
+                x_atual = 0;
+                y_atual = 0;
+                z_atual = 0;
+                x_real = 0;
+                y_real = 0;
+                z_real = 0;
+                loadcell_y.tare(10);
+                loadcell_z.tare(10);
                 return zerar;
             }
         }
@@ -293,7 +364,9 @@ evento_t standby_f(){
 }
 
 long tempo_inicial = 0, tempo_step;
-const long step = 1000, total = 5000;
+unsigned int total = 5000;
+float delta_tempo = 0;
+const float step = 0.1;
 
 evento_t linear_alternativo_f(){
     if(estado_anterior != linear_alternativo){ // Esta condição indica que o sistema acabou de entrar no estado, portanto é onde ocorre a inicialização
@@ -339,6 +412,7 @@ evento_t linear_alternativo_f(){
 
 evento_t rotativo_f(){
     if(estado_anterior != rotativo){ // Esta condição indica que o sistema acabou de entrar no estado, portanto é onde ocorre a inicialização
+        cli();
         Serial.println("Modo Rotativo");
         Serial.print("Forca Normal (N): ");
         Serial.println(dados_rotativo.normal);
@@ -346,9 +420,23 @@ evento_t rotativo_f(){
         Serial.println(dados_rotativo.diametro);
         Serial.print("Distancia Total (m): ");
         Serial.println(dados_rotativo.distancia);
+        Serial.print("Velocidade (mm/s): ");
+        Serial.println(dados_rotativo.velocidade);
         Serial1.print("Load.j0.val=0");
+
+        init_timer3(periodo_atualizacao_cnc(dados_rotativo.velocidade));
+
+        go_to_mm(0, dados_rotativo.diametro/2.0);
+        go_to_circular_mm(2*3.1415926535897, 0, 0, 50);
+
+        referencia_forca_z = dados_rotativo.normal;
+        reiniciar_controle();
+        habilitar_timer4_ovf();        
+
         tempo_inicial = millis();
         tempo_step = millis();
+        delta_tempo = 0;
+        sei();
     }
 
     if(Serial1.available() > 0){
@@ -356,28 +444,31 @@ evento_t rotativo_f(){
         if(numero_de_lidos == 3){
             cmd_buffer[3] = '\0';
             if(strcmp(cmd_buffer, "ccl") == 0){
+                desabilitar_timer4_ovf();
+                limpar_fila();
+                go_to_z_mm(0);
+                go_to_mm(0, 0);
                 return cancelar;
             }
         }
     }
 
-    if(millis() - tempo_step >= step){
-        Serial1.print("Load.j0.val+=");
-        Serial1.print((uint8_t)(step*100/total));
-        Serial1.write(termination, 3);
+    if(millis() - tempo_step >= 1000*step){
+        Serial.print(loadcell_y.get_value(5));
+        Serial.print("; ");
+        Serial.println(delta_tempo);
+
+        delta_tempo += step;
         tempo_step = millis();
     }
 
-    if(millis() - tempo_inicial >= total){
-        Serial1.print("page Menu");
-        Serial1.write(termination, 3);
+    if(cnc_complete()){
+        Serial.println("Rotação completa!");
         return pronto;
     }
 
     return no_event;
 }
-
-extern const int passos_por_mm;
 
 evento_t manual_f(){
     if(estado_anterior != manual){ // Esta condição indica que o sistema acabou de entrar no estado, portanto é onde ocorre a inicialização
@@ -504,4 +595,19 @@ evento_t fadiga_f(){
     }
 
     return no_event;
+}
+
+void reiniciar_controle(){
+    erro_integral = 0;
+    erro_anterior = 0;
+}
+
+void lei_de_controle(){
+    forca_z = loadcell_z.get_value(5);
+    float erro = referencia_forca_z - forca_z;
+    erro_integral += 0.5*(erro + erro_anterior)*prd_controle;
+
+    go_to_z_mm(kp*erro + ki*erro_integral);
+
+    erro_anterior = erro;
 }

@@ -6,10 +6,8 @@ const int DIR_Y =  7;
 const int DIR_Z = 11;
 
 typedef struct{
-    short x = 0;
-    short y = 0;
-    short z = 0;
-    unsigned int n = 1;
+    uint8_t xyz = 0;
+    unsigned short n = 1;
 } Incremento;
 
 typedef struct node{ // Lista linkada com os pulsos, -1 equivale a um pulso negativo, 0 a nenhum e 1 a um pulso positivo. n é a contagem de pulsos
@@ -18,6 +16,7 @@ typedef struct node{ // Lista linkada com os pulsos, -1 equivale a um pulso nega
 } Node;
 
 int x_atual = 0, y_atual = 0, z_atual = 0; // Posição em x, y e z em pulsos
+int x_real = 0, y_real = 0, z_real = 0;
 const int passos_por_mm = 40;
 
 // Começo e fim da fila circular
@@ -34,14 +33,27 @@ int cnc_complete(){ // Retorna 1 se não houver nenhum incremento na fila de exe
     }
 }
 
+void limpar_fila(){
+    while(primeiro != NULL){
+        remover_incremento();
+    }
+}
+
 void adicionar_incremento(short x, short y, short z, unsigned int n){ // Adiciona um incremento à fila de execução
     Node *newnode = (Node *)malloc(sizeof(Node));
 
+    if(newnode == NULL){
+        Serial.println("falha ao adicionar incremento");
+        return;
+    }
+
     Incremento temp;
-    temp.x = x;
-    temp.y = y;
-    temp.z = z;
+    temp.xyz = (x>0?1:0 << 0) | (x!=0?1:0 << 1) | (y>0?1:0 << 2) | (y!=0?1:0 << 3) | (z>0?1:0 << 4) | (z!=0?1:0 << 5);
     temp.n = n;
+
+    x_atual += x*n;
+    y_atual += y*n;
+    z_atual += z*n;
 
     newnode->data = temp;
     newnode->proximo = NULL;
@@ -82,11 +94,11 @@ int i = 0;
 void atualizar_cnc(){ // No primeiro semiciclo, gera os pulsos equivalentes ao primeiro elemento da fila e o remove se completo, e no segundo semiciclo zera os valores das saídas digitais
     if(i == 1){ // Quando i == 0, ler a fila e gerar as bordas de subida, quando i == 1, zerar os valores de saída para permitir a próxima borda. i alterna entre 0 e 1
         digitalWrite(PULSE_X, LOW);
-        digitalWrite(DIR_X, LOW);
+        // digitalWrite(DIR_X, LOW);
         digitalWrite(PULSE_Y, LOW);
-        digitalWrite(DIR_Y, LOW);
+        // digitalWrite(DIR_Y, LOW);
         digitalWrite(PULSE_Z, LOW);
-        digitalWrite(DIR_Z, LOW);
+        // digitalWrite(DIR_Z, LOW);
         i = 0;
         return;
     }else{
@@ -98,19 +110,23 @@ void atualizar_cnc(){ // No primeiro semiciclo, gera os pulsos equivalentes ao p
     }
 
     if((primeiro->data).n > 0){ // 
-        digitalWrite(DIR_X, ((primeiro->data).x>0)?HIGH:LOW);
-        digitalWrite(DIR_Y, ((primeiro->data).y>0)?HIGH:LOW);
-        digitalWrite(DIR_Z, ((primeiro->data).z>0)?HIGH:LOW);
+        digitalWrite(DIR_X, bitRead((primeiro->data).xyz, 0));
+        digitalWrite(DIR_Y, bitRead((primeiro->data).xyz, 2));
+        digitalWrite(DIR_Z, bitRead((primeiro->data).xyz, 4));
 
         delayMicroseconds(20);
 
-        digitalWrite(PULSE_X, ((primeiro->data).x!=0)?HIGH:LOW);
-        digitalWrite(PULSE_Y, ((primeiro->data).y!=0)?HIGH:LOW);
-        digitalWrite(PULSE_Z, ((primeiro->data).z!=0)?HIGH:LOW);
+        digitalWrite(PULSE_X, bitRead((primeiro->data).xyz, 1));
+        digitalWrite(PULSE_Y, bitRead((primeiro->data).xyz, 3));
+        digitalWrite(PULSE_Z, bitRead((primeiro->data).xyz, 5));
 
-        x_atual += (primeiro->data).x;
-        y_atual += (primeiro->data).y;
-        z_atual += (primeiro->data).z;
+        x_real += (bitRead((primeiro->data).xyz, 0)>0?1:-1)*bitRead((primeiro->data).xyz, 1);
+        y_real += (bitRead((primeiro->data).xyz, 2)>0?1:-1)*bitRead((primeiro->data).xyz, 3);
+        z_real += (bitRead((primeiro->data).xyz, 4)>0?1:-1)*bitRead((primeiro->data).xyz, 5);
+
+        // x_atual += (primeiro->data).x;
+        // y_atual += (primeiro->data).y;
+        // z_atual += (primeiro->data).z;
 
         // Serial.print("pulso: ");
         // Serial.print((primeiro->data).x);
@@ -141,7 +157,7 @@ inline int sgn(int x){ // Retorna o sinal do número, ou zero
 }
 
 inline float distancia_ponto_e_reta(float a, float b, float c, float x, float y){
-    return abs(a*x + b*y + c)/hypot(a, b);
+    return abs(a*x + b*y + c);
 }
 
 void go_to_mm(float x, float y){
@@ -150,7 +166,11 @@ void go_to_mm(float x, float y){
 
 void go_to(int x, int y){
     float a = y_atual - y, b = x - x_atual, c = (x_atual*y) - (x*y_atual);
-    
+    float h = 1/hypot(a, b);
+    a *= h;
+    b *= h;
+    c *= h;
+
     int delta_x = x_atual - x, delta_y = y_atual - y;
     int reto_x = 0, reto_y = 0, reto_total = 0;
     int diag_x = 0, diag_y = 0, diag_total = 0;
@@ -184,16 +204,20 @@ void go_to(int x, int y){
             }
         }else{
             int delta = min(reto_total, max_step);
-            adicionar_incremento(reto_x, reto_y, 0, delta);
-            reto_total -= delta;
-            x_sim += reto_x*delta;
-            y_sim += reto_y*delta;
+            if(delta != 0){
+                adicionar_incremento(reto_x, reto_y, 0, delta);
+                reto_total -= delta;
+                x_sim += reto_x*delta;
+                y_sim += reto_y*delta;
+            }
 
             delta = min(diag_total, max_step);
-            adicionar_incremento(diag_x, diag_y, 0, delta);
-            diag_total -= delta;
-            x_sim += diag_x*delta;
-            y_sim += diag_y*delta;
+            if(delta != 0){
+                adicionar_incremento(diag_x, diag_y, 0, delta);
+                diag_total -= delta;
+                x_sim += diag_x*delta;
+                y_sim += diag_y*delta;
+            }
         }
     }
 }
@@ -212,7 +236,7 @@ void go_to_circular(float arco_radianos, int xc, int yc, int steps){
     int i;
     for(i = 0; i < steps; i++){
         angulo_atual += angulo_step;
-        go_to(xc + raio*cos(angulo_atual), yc + raio*sin(angulo_atual));
+        go_to(xc + round(raio*cos(angulo_atual)), yc + round(raio*sin(angulo_atual)));
     }
 }
 
