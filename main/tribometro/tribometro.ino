@@ -1,5 +1,5 @@
 /*
-*serial comunica mas nao executa
+*serial comunica mas cnc nao executa
  */
 #include "HX711.h"
 
@@ -363,7 +363,7 @@ evento_t standby_f(){
     return no_event; // caso não haja dados na porta serial ou ocorra algum erro, não há evento emitido e o sistema continua em standby
 }
 
-long tempo_inicial = 0, tempo_step;
+unsigned long tempo_inicial = 0, tempo_step;
 unsigned int total = 5000;
 float delta_tempo = 0;
 const float step = 0.1;
