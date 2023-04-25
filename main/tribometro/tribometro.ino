@@ -1,5 +1,6 @@
 /*
-*serial comunica mas cnc nao executa
+* modo manual nao funciona
+* Z correndo direto pro fim do curso na direita
  */
 #include "HX711.h"
 
@@ -18,6 +19,8 @@ extern const int DIR_X;
 extern const int DIR_Y;
 extern const int DIR_Z;
 
+const int FIM_DE_CURSO = 18;
+
 const uint8_t termination[] = {0xFF, 0xFF, 0xFF};
 
 typedef enum {
@@ -27,7 +30,7 @@ typedef enum {
   iniciar_riscamento,
   iniciar_fadiga,
   cancelar,
-  zerar,
+  iniciar_zerar,
   pronto,
   no_event
 } evento_t;
@@ -38,7 +41,8 @@ typedef enum {
   rotativo,
   manual,
   riscamento,
-  fadiga
+  fadiga,
+  zerar
 } estado_t;
 
 typedef struct{
@@ -99,7 +103,7 @@ long tempo_cnc = 100; // Tempo de atualização do cnc em microssegundos, a alte
 char cmd_buffer[10];
 
 void init_timer3(uint16_t periodo_us){
-    // Modo Fast PWM (overflow quando o contador exige OCR3A -> controlar o periodo)
+    // Modo Fast PWM (overflow quando o contador atinge OCR3A -> controlar o periodo)
     TCCR3A = (1 << WGM31) | (1 << WGM30);
     TCCR3B = (1 << WGM33) | (1 << WGM32);
     
@@ -111,7 +115,7 @@ void init_timer3(uint16_t periodo_us){
 }
 
 void init_timer4(uint16_t periodo_us){
-    // Modo Fast PWM (overflow quando o contador exige OCR4A -> controlar o periodo)
+    // Modo Fast PWM (overflow quando o contador atinge OCR4A -> controlar o periodo)
     TCCR4A = (1 << WGM41) | (1 << WGM40);
     TCCR4B = (1 << WGM43) | (1 << WGM42);
 
@@ -148,10 +152,13 @@ void setup() {
     pinMode(DIR_X, OUTPUT);
     pinMode(DIR_Y, OUTPUT);
     pinMode(DIR_Z, OUTPUT);
+    pinMode(FIM_DE_CURSO, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(FIM_DE_CURSO), fim_de_curso_isr, FALLING);
+
     Serial.begin(9600);
     Serial1.begin(9600);
 
-    init_timer3(periodo_atualizacao_cnc(50)); // velocidade inicial de 50 mm/s
+    init_timer3(periodo_atualizacao_cnc(100)); // velocidade inicial de 100 mm/s
     init_timer4(1e6*prd_controle);
 
     desabilitar_timer4_ovf();
@@ -172,6 +179,13 @@ ISR(TIMER3_OVF_vect){
 
 ISR(TIMER4_OVF_vect){
     lei_de_controle();
+}
+
+void fim_de_curso_isr(){
+    cli();
+    desabilitar_timer4_ovf();
+    limpar_fila();
+    sei();
 }
 
 extern int x_atual, y_atual, z_atual; // Posição em x, y e z em pulsos
@@ -200,6 +214,9 @@ void maquina_de_estados() {
         case fadiga:
             evento = fadiga_f();
             break;
+        case zerar:
+            evento = zerar_f();
+            break;
         default:
             break;
     }
@@ -222,11 +239,8 @@ void maquina_de_estados() {
                 case iniciar_rotativo:
                     proximo_estado = rotativo;
                     break;
-                case zerar:
-                    Serial.println("zero");
-                    x_atual = 0;
-                    y_atual = 0;
-                    z_atual = 0;
+                case iniciar_zerar:
+                    proximo_estado = zerar;
                     break;
                 default:
                     break;
@@ -292,6 +306,15 @@ void maquina_de_estados() {
                     break;
             }
             break;
+        case zerar:
+            switch(evento){
+                case pronto:
+                    proximo_estado = standby;
+                    break;
+                default:
+                    break;
+            }
+            break;
         default:
             proximo_estado = standby;
             break;
@@ -306,6 +329,7 @@ void maquina_de_estados() {
     estado_anterior = estado_atual;
     estado_atual = proximo_estado;
 }
+
 
 evento_t standby_f(){
     if(estado_anterior != standby){ // Esta condição indica que o sistema acabou de entrar no estado, portanto é onde ocorre a inicialização
@@ -347,15 +371,7 @@ evento_t standby_f(){
             }else if(strcmp(cmd_buffer, "man") == 0){ // Comando para iniciar o modo manual
                 return iniciar_manual;
             }else if(strcmp(cmd_buffer, "zro") == 0){ // Comando zerar
-                x_atual = 0;
-                y_atual = 0;
-                z_atual = 0;
-                x_real = 0;
-                y_real = 0;
-                z_real = 0;
-                loadcell_y.tare(10);
-                loadcell_z.tare(10);
-                return zerar;
+                return iniciar_zerar;
             }
         }
     }
@@ -427,7 +443,7 @@ evento_t rotativo_f(){
         init_timer3(periodo_atualizacao_cnc(dados_rotativo.velocidade));
 
         go_to_mm(0, dados_rotativo.diametro/2.0);
-        go_to_circular_mm(2*3.1415926535897, 0, 0, 50);
+        go_to_circular_mm(2*(float)dados_rotativo.distancia/(float)dados_rotativo.diametro, 0, 0, 50);
 
         referencia_forca_z = dados_rotativo.normal;
         reiniciar_controle();
@@ -470,6 +486,8 @@ evento_t rotativo_f(){
     return no_event;
 }
 
+long last_print = 0;
+
 evento_t manual_f(){
     if(estado_anterior != manual){ // Esta condição indica que o sistema acabou de entrar no estado, portanto é onde ocorre a inicialização
         Serial.println("Modo manual");
@@ -488,25 +506,33 @@ evento_t manual_f(){
                 go_to(0, 0);
             }else if(strcmp(cmd_buffer, "x++") == 0){
                 Serial.println("x++");
-                adicionar_incremento(1, 0, 0, 1*passos_por_mm); // incremento de 1mm
+                adicionar_incremento(1, 0, 0, 5*passos_por_mm); // incremento de 5mm
             }else if(strcmp(cmd_buffer, "x--") == 0){
                 Serial.println("x--");
-                adicionar_incremento(-1, 0, 0, 1*passos_por_mm); // incremento de 1mm
+                adicionar_incremento(-1, 0, 0, 5*passos_por_mm); // incremento de 5mm
             }else if(strcmp(cmd_buffer, "y++") == 0){
                 Serial.println("y++");
-                adicionar_incremento(0, 1, 0, 1*passos_por_mm); // incremento de 1mm
+                adicionar_incremento(0, 1, 0, 5*passos_por_mm); // incremento de 5mm
             }else if(strcmp(cmd_buffer, "y--") == 0){
                 Serial.println("y--");
-                adicionar_incremento(0, -1, 0, 1*passos_por_mm); // incremento de 1mm
+                adicionar_incremento(0, -1, 0, 5*passos_por_mm); // incremento de 5mm
             }else if(strcmp(cmd_buffer, "z++") == 0){
                 Serial.println("z++");
-                adicionar_incremento(0, 0, 1, 1*passos_por_mm); // incremento de 1mm
+                adicionar_incremento(0, 0, 1, 5*passos_por_mm); // incremento de 5mm
             }else if(strcmp(cmd_buffer, "z--") == 0){
                 Serial.println("z--");
-                adicionar_incremento(0, 0, -1, 1*passos_por_mm); // incremento de 1mm
+                adicionar_incremento(0, 0, -1, 5*passos_por_mm); // incremento de 5mm
             }
         }
     }
+
+    if(millis() - last_print >= 500){
+        forca_z = loadcell_z.get_value(5);
+        Serial.print("leitura z: ");
+        Serial.println(forca_z);
+        last_print = millis();
+    }
+
     return no_event;
 }
 
@@ -594,6 +620,39 @@ evento_t fadiga_f(){
         return pronto;
     }
 
+    return no_event;
+}
+
+int i_zeragem = 0;
+
+evento_t zerar_f(){
+    if(estado_anterior != zerar){
+        limpar_fila();
+        go_to_z(-50);
+        i_zeragem = 0;
+    }
+
+    if(cnc_complete()){
+        if(i_zeragem == 0){
+            go_to_mm(-50, 0);
+            i_zeragem++;
+        }else if(i_zeragem == 1){
+            go_to_mm(0, -50);
+            i_zeragem++;
+        }else if(i_zeragem == 2){
+            go_to_z(1);
+            go_to_mm(1, 1);
+            i_zeragem++;
+        }else{
+            x_atual = 0;
+            y_atual = 0;
+            z_atual = 0;
+            x_real = 0;
+            y_real = 0;
+            z_real = 0;
+            return pronto;
+        }
+    }
     return no_event;
 }
 

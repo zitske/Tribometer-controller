@@ -34,9 +34,11 @@ int cnc_complete(){ // Retorna 1 se não houver nenhum incremento na fila de exe
 }
 
 void limpar_fila(){
+    cli();
     while(primeiro != NULL){
         remover_incremento();
     }
+    sei();
 }
 
 void adicionar_incremento(short x, short y, short z, unsigned int n){ // Adiciona um incremento à fila de execução
