@@ -18,8 +18,7 @@
             "includePath": [
                 "/Users/zitske/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/cores/arduino",
                 "/Users/zitske/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/variants/mega",
-                "/Users/zitske/Documents/Arduino/libraries/Nextion",
-                "/Users/zitske/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/libraries/SoftwareSerial/src",
+                "/Users/zitske/Documents/Arduino/libraries/HX711/src",
                 "/Users/zitske/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include",
                 "/Users/zitske/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include-fixed",
                 "/Users/zitske/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/avr/include"
@@ -31,7 +30,7 @@
             "cppStandard": "c++11",
             "defines": [
                 "F_CPU=16000000L",
-                "ARDUINO=10819",
+                "ARDUINO=10607",
                 "ARDUINO_AVR_MEGA2560",
                 "ARDUINO_ARCH_AVR",
                 "__DBL_MIN_EXP__=(-125)",
