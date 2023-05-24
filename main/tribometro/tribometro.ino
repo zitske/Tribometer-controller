@@ -296,6 +296,7 @@ long tempo_inicial = 0, tempo_step;
 const long step = 1000, total = 5000;
 
 evento_t linear_alternativo_f(){
+  bool ok = false;
     if(estado_anterior != linear_alternativo){ // Esta condição indica que o sistema acabou de entrar no estado, portanto é onde ocorre a inicialização
         /*Serial.println("Modo Linear");
         Serial.print("Forca Normal (N): ");
@@ -309,34 +310,51 @@ evento_t linear_alternativo_f(){
         tempo_inicial = millis();
         tempo_step = millis();
     }
-    int t = dados_linear.distancia/dados_linear.curso;
-    Serial.println("G21 G90 G1 F"+String(dados_linear.velocidade));
+    int t = (dados_linear.distancia*100)/dados_linear.curso;
+
     
-    for(int i = 0;i<t;i++){
-        Serial.println("G90 G0 X"+String(dados_linear.curso)+" Y0");
-        Serial.println("G90 G0 X0 Y0");
-    }
-    
+     // Funcionando sem o Z 
+     
+    Serial.println(String(t));
+    Serial.println("G21 G90 G1 F" + String(dados_linear.velocidade));
+    delay(1000);
+// Read console input
+  for (int i = 0; i < t; i++) {
+    Serial.println("G90 G1 X" + String(dados_linear.curso) + " Y0");
+    delay(1000);
+    Serial.println("G90 G1 X0 Y0");
+    delay(1000);
+  }
+
     /*
-    With PID
+    
+    //With PID
     // Define the PID constants
         double kp = 1.0;   // Proportional gain
         double ki = 0.5;   // Integral gain
         double kd = 0.2;   // Derivative gain
 
         // Define variables for PID control
-        double setpoint = 10.0;  // Desired weight setpoint
+        double setpoint = dados_linear.normal/9.81;  // Desired weight setpoint
         double error = 0.0;      // Error term
         double integral = 0.0;   // Integral term
         double derivative = 0.0; // Derivative term
         double last_error = 0.0; // Previous error
-
+        double output = 0.0;
+        double pesoZ = 0.0;
+        Serial.println("G21 G90 G1 F3000"
+        //+ String(dados_linear.velocidade)
+        );
+            delay(1000);
         // PID control loop
-            while (true) {
-            // Get the current weight on the Z-axis
-            double pesoZ = balanca.get_units();
+              
+              for (int i = 0; i < t; i++) {
+              
 
-            // Calculate the error term
+            // Apply the PID output to the Z-axis
+            // Modify the existing code to include the PID output
+             pesoZ = balanca.get_units();
+                // Calculate the error term
             error = setpoint - pesoZ;
 
             // Calculate the integral term (accumulating errors)
@@ -346,22 +364,36 @@ evento_t linear_alternativo_f(){
             derivative = error - last_error;
 
             // Calculate the PID output
-            double output = kp * error + ki * integral + kd * derivative;
-
-            // Apply the PID output to the Z-axis
-            // Modify the existing code to include the PID output
-            Serial.println("G21 G90 G1 F" + String(dados_linear.velocidade));
+            output = kp * error + ki * integral + kd * derivative;
+            last_error = error;
+                Serial.println("G90 G1 X" + String(dados_linear.curso) + " Y0 Z"+ String(output));
             
-            for (int i = 0; i < t; i++) {
-                Serial.println("G90 G0 X" + String(dados_linear.curso) + " Y0");
-                Serial.println("G90 G0 X0 Y0 Z" + String(output));  // Apply the PID output to Z-axis
-            }
+                while(!ok_check){};
+                delay(5000);
+                pesoZ = balanca.get_units();
+                // Calculate the error term
+            error = setpoint - pesoZ;
+
+            // Calculate the integral term (accumulating errors)
+            integral += error;
+
+            // Calculate the derivative term (rate of change of error)
+            derivative = error - last_error;
+
+            // Calculate the PID output
+             output = kp * error + ki * integral + kd * derivative;
+
+                Serial.println("G90 G1 X0 Y0 Z" + String(output));  // Apply the PID output to Z-axis
+                 while(!ok_check){};
+                 delay(5000);
+            
 
             // Store the current error for the next iteration
             last_error = error;
             }
-        
             */
+        
+            
     
     if(Serial1.available() > 0){
         size_t numero_de_lidos = Serial1.readBytes((char *)cmd_buffer, 3);
@@ -390,15 +422,17 @@ evento_t linear_alternativo_f(){
 
     return no_event;
 }
+
+
 bool ok_check(){
+  while(!Serial.available()){}
     if (Serial.available()) {  // Check if there is data available to read
-    String receivedData = Serial.readStringUntil('\n');  // Read the data until a newline character is received
-    
+    String receivedData = Serial.readString();  // Read the data until a newline character is received
     if (receivedData == "OK") {  // Check if the received data is equal to "OK"
       // "OK" received, do something
       return true;
     }else{
-        return false;
+      return false;
     }
   }
 }
@@ -415,13 +449,16 @@ evento_t rotativo_f(){
         tempo_inicial = millis();
         tempo_step = millis();
     }
-    int t = dados_rotativo.distancia/(2*3.14159*(dados_rotativo.diametro/2));
+    int t = (dados_rotativo.distancia*100)/(2*3.14159*(dados_rotativo.diametro/2));
     Serial.println("G21 G90 G1 F"+String(dados_rotativo.velocidade));
+    delay(1000);
     Serial.println("G1 X0 Y0");
-    
+    delay(1000);
     for(int i = 0;i<t;i++){
         Serial.println("G2 I"+String(dados_rotativo.diametro/2)+" Y0");
+        delay(1000);
         Serial.println("G1 X0 Y0");
+        delay(1000);
     }
     Serial.println("M2");
 
